@@ -143,16 +143,33 @@ slope <- (max(ts.avgresp.train) - min(ts.avgresp.train))/diff(maxes)[1]
 
 min.avg + slope*90
 
-forecast_avg_resptime <- function(ts.train=ts()){
+forecast_avg_resptime <- function(ts.train=ts.avgresp.train, h=length(ts.avgresp.test), 
+                                  period = diff(maxes)[1], 
+                                  ts.slope=slope, ts.min.avg=min.avg) {
   
   #find where you are 
+  position <- round((ts.train[length(ts.train)] - ts.min.avg) / ts.slope)
   
+  periods <- c()
   
+  #fill the 90-min 
+  periods[1:(period - position)] <- c((position+1):period)
   
+  fullperiods <- (h - (period - position)) %/% period
+  remainder <- (h - (period - position)) %% period
+  
+  if(fullperiods != 0) {periods <- c(periods, rep(1:period, fullperiods))}
+  
+  if(remainder != 0) {periods <- c(periods, 1:remainder)}
+  
+  ##return the "forecast" 
+  forecast_avg.ts <- ts(sapply(periods, function(x){x <- round(ts.min.avg + ts.slope * x)}), freq = 60, start = length(ts.train)/60+1)
+  
+  forecast_avg.ts
   
 }
 
 
-
-
+forecast_avg.ts <- forecast_avg_resptime()
+autoplot(ts.avgresp.train) + autolayer(forecast_avg.ts) 
 
