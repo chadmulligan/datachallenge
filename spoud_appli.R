@@ -39,11 +39,30 @@ rm(applis)
 
 
 
+###ordering the throughput graph
+maxes <- data.frame(tkNameIdProvider = rep(NA, 18), eventTime = rep(NA, 18))
+for (i in 1:18) {
+  level <- levels(applis_bucket$tkNameIdProvider)[i]
+  maxes$tkNameIdProvider[i] <- paste(applis_bucket[applis_bucket$tkNameIdProvider==level & applis_bucket$throughput == 160, 
+                                                   c("tkNameIdProvider")][[1]])
+  maxes$eventTime[i] <- paste(applis_bucket[applis_bucket$tkNameIdProvider==level & applis_bucket$throughput == 160, 
+                                            c("eventTime")][[1]])
+  }
+
+maxes [,2] <- ymd_hms(maxes[,2])
+
+ordered_levels <- maxes %>%
+  arrange(eventTime) %>%
+  pull(tkNameIdProvider)
+
+
 ###Plotting Throughput
+applis_bucket$newfac <- factor(applis_bucket$tkNameIdProvider, levels = ordered_levels)
 g1 <- ggplot(applis_bucket, aes(x=eventTime, 
-                                y=throughput, group = tkNameIdProvider, col=tkNameIdProvider)) +
+                                y=throughput, group =tkNameIdProvider, col=newfac)) +
+  
   geom_point() + 
-  facet_grid(tkNameIdProvider ~ . , labeller = label_parsed) +
+  facet_grid(newfac ~ . ) +
   theme_bw() +
   ggtitle("Throughput") +
   theme(plot.title = element_text(hjust = 0.5)) +
@@ -88,5 +107,4 @@ g3 <- ggplot(applis_bucket, aes(x=eventTime,
   guides(col=guide_legend(title = element_blank())) 
 
 g3
-
 

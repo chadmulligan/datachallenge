@@ -1,36 +1,158 @@
 setwd("D:/jisnard/Documents/spoud/")
 source("helpers.R")
 
-load("applis_gany_bucket.RData")
+# load("applis_gany_bucket.RData")
 
 library(forecast)
 library(tseries)
+library(splines)
+library(TSA)
 
-tsGany <- ts(applis_gany_bucket$avg_respTime, frequency = 60)
-plot(tsGany)
-
-decomp = stl(tsGany, s.window="periodic")
-deseasonal <- seasadj(decomp)
-
-plot(deseasonal)
-
-adf.test(deseasonal)
-
-acf(deseasonal)
-pacf(deseasonal)
+load("applis_bucket.RData")
 
 
+applis_mond_bucket <- applis_bucket[grepl("Mond", applis_bucket$tkNameIdProvider), ]
 
-g7 <- ggplot(applis_gany_bucket, aes(x=eventTime, y=avg_respTime)) +
-  geom_point(col = colors[3]) +
-  theme_bw() +
-  scale_x_datetime(date_breaks = "1 hour",
-                   labels = date_format("%H:%M")) +
-  theme(axis.title.x = element_blank()) 
+ts.throughput <- ts(applis_mond_bucket$throughput, freq=60)
+plot(ts.throughput)
 
-g7 +
-  geom_point(aes(y = applis_gany_bucket[, "throughput"] * 3.5 ), col = colors[2]) +
-  scale_y_continuous(name = "avg_respTime", sec.axis = sec_axis(~./3.5, name="Throughput")) +
-  guides(col=guide_legend(title=NULL))
+ts.throughput.train <- ts(ts.throughput[1:(0.6*720)], freq = 60)
+ts.throughput.test <- ts(ts.throughput[433:720], freq = 60, start = 8.2)
+
+
+
+### bruteforcing the arima
+grid <- expand.grid(ar = 0:25, diff = 0:1, ma = 0:1)
+grid[1,]
+grid$mape <- rep(NA, length(grid))
+nrow(grid)
+
+
+### we want to force the model to test all order combinations
+stl.train <- function(grid = data.frame(), train = ts(), test = ts()){
+  
+  test.length <- length(test)
+  
+  for (i in 1:nrow(grid)){
+    
+    fit <- NULL
+    forecast.fit <- NULL
+    
+    ###modelfunction to apply to the stl decomposition
+    order.grid <- c(grid[i, 1], grid[i, 2], grid[i, 3])
+    
+    arima.mod <- function(x, ...) {return(arima(x, order= order.grid, ...))}
+    
+    tryCatch({
+      fit <- stlm(y = train, modelfunction = arima.mod) 
+      forecast.fit <- forecast(object=fit, h = test.length)
+      grid$mape[i] <- accuracy(forecast.ts, test)["Test set", "MAPE"]
+    },
+    error=function(e) {cat("ERROR :",conditionMessage(e), "\n")},
+    warning=function(w) {cat("WARNING :",conditionMessage(w), "\n")}
+    )
+  }
+
+  grid
+  
+}
+
+results <- stl.train(grid, ts.throughput.train, ts.throughput.test)
+
+results %>%
+  arrange(accuracy) %>%
+  slice(1) %>%
+  as.data.frame()
+
+
+###refitting and ploting the forecasts of the selected model
+arima.mod <- function(x , ...) {return(stats::arima(x, order= c(15, 0, 1), ...))}
+
+fit.ts <- stlm(y = ts.throughput.train, modelfunction = arima.mod) 
+forecast.ts <- forecast(object=fit.ts, h = length(ts.throughput.test))
+autoplot(forecast.ts) + autolayer(ts.throughput.test, series = "Mond (test)")
+
+
+####TBATS modelling
+fit.bats <- tbats(ts.throughput.train)
+fc.tbats <- forecast(fit.bats, h=287)
+autoplot(fc.tbats)
+
+
+####Fourier test#### WARNING
+####differences to make the ts stationary
+ndiffs(ts.throughput.train)
+p <- periodogram(ts.throughput.train)
+
+
+data.frame(period=1/p$freq, spec=p$spec) %>%
+  arrange(desc(spec)) %>%
+  head()
+
+###fit arima with external fourier regressors ##### WARNING, too long to compute. 
+bestfit <- list(aicc=c(), i=c(), j=c(), fit=c())
+
+for(i in 1:3) {
+  for (j in 1:3){
+    z1 <- fourier(ts(ts.throughput.train, frequency=216), K=i)
+    z2 <- fourier(ts(ts.throughput.train, frequency=144), K=j)
+    fit <- auto.arima(ts.throughput.train, xreg=cbind(z1, z2))
+    if(fit$aicc < bestfit$aicc) {
+      bestfit <- list(aicc=fit$aicc, i=i, j=j, fit=fit)
+    }
+    print(paste0("j= ", j, ", done"))
+  }
+print(paste0("i= ", i, ", done"))
+}
+
+bestfit
+
+
+
+### AVG RESPONSE TIME ######
+ts.avgresp <- ts(applis_mond_bucket$avg_respTime, freq=60)
+plot(ts.avgresp)
+
+ts.avgresp.train <- ts(ts.avgresp[1:(.6*720)], freq = 60)
+ts.avgresp.test <- ts(ts.avgresp[433:720], freq = 60, start = 8.2)
+plot(ts.avgresp.train)
+
+# ###un-tuned fit -NOPE
+# fit0 <- auto.arima(ts.avgresp.train)
+# fc0 <- forecast(fit0, h=288)
+# accuracy(fc0, ts.avgresp.test)
+# autoplot(fc0) + autolayer(ts.avgresp.test, series = "Mond (test)")
+# 
+# ###seasonalised fit -NOPE
+# fit.avg.ts <- stlm(y = ts.avgresp.train, modelfunction = ar, s.window = 3)
+# forecast.avg.ts <- forecast(fit.avg.ts, h = length(ts.avgresp.test))
+# accuracy(forecast.avg.ts, ts.avgresp.test)
+# autoplot(forecast.avg.ts) + autolayer(ts.avgresp.test, series = "Mond (test)")
+# 
+# ####TBATS modelling -NOPE
+# fit.avg.bats <- tbats(ts.avgresp.train)
+# fc.tbats <- forecast(fit.avg.bats, h=288)
+# autoplot(fc.tbats)
+
+#### the "other" method
+maxes <- which(max(ts.avgresp.train) == ts.avgresp.train)
+diff(maxes)
+
+min.avg <- min(ts.avgresp.train)
+slope <- (max(ts.avgresp.train) - min(ts.avgresp.train))/diff(maxes)[1]
+
+min.avg + slope*90
+
+forecast_avg_resptime <- function(ts.train=ts()){
+  
+  #find where you are 
+  
+  
+  
+  
+}
+
+
+
 
 
