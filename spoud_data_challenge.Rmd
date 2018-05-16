@@ -306,7 +306,7 @@ Facing a periodic signal we fit a model using a Seasonal Decomposition of Time S
 
 #### Decomposition
 
-```{r, echo=FALSE, fig.align='center'}
+```{r, echo=FALSE, fig.height=8, fig.width=10, fig.align='center'}
 ts.throughput %>%
  stl(s.window=13) %>%
   autoplot()
@@ -321,7 +321,7 @@ ts.throughput %>%
 We separated the dataset in a train and a test set, with a 60% / 40% ratio. We start by fitting an STL + autoregressive model (the observations are a linear combination of former observations). The function applies a non-seasonal forecasting method to the sea-
 sonally adjusted data and re-seasonalize using the last the seasonal window component  (forecast R package).  
 
-```{r, echo=FALSE, fig.align='center'}
+```{r, echo=FALSE, fig.height=8, fig.width=10, fig.align='center'}
 fit.ts <- stlm(y = ts.throughput.train, modelfunction = ar) 
 forecast.ts <- forecast(object=fit.ts, h = length(ts.throughput.test))
 autoplot(forecast.ts) + autolayer(ts.throughput.test, series = "Mond (test)")
@@ -420,10 +420,10 @@ results %>%
 
 \
 
-Our best model is an STL + ARIMA (15, 0, 1), hence including 15 lagged observations + 1 lagged white noise error term. 
+Our best model is an STL + ARIMA (15, 0, 1), hence including 15 minutes lag + 1 lagged white noise error term. 
 
 
-````{r, fig.align='center'}
+````{r, fig.height=8, fig.width=10, fig.align='center'}
 ###refitting and ploting the forecasts of the selected model
 arima.mod <- function(x , ...) {return(stats::arima(x, order= c(15, 0, 1), ...))}
 
@@ -438,9 +438,9 @@ autoplot(forecast.ts) + autolayer(ts.throughput.test, series = "Mond (test)")
 
 #### Discussion
 
-As we said, the curve is a weel-defined periodic signal. Next task should be to find the actual curve equation through fourier decomposition. We tried to tune an ARIMA model using external Fourier regressors but it was taking too much time. 
+As we said, the curve is a weel-defined periodic signal. Next task should be to find the actual curve equation through fourier decomposition. We tried to tune an ARIMA model using external Fourier regressors but it was taking too much time. We cannot get a zero-percentage error model though, due to the smoothing effect vs. discrete observations. 
 
-Another issue is that the STL decoposition is sensibile to the train set, added to the fact that our training set spans a single period. At least, the model should be fitted on 2-3 periods to be ensure stability and reproducibility. 
+Another issue is that the STL decoposition is sensibile to the train set, added to the fact that our training set spans a single period. At least, the model should be fitted on 2-3 periods to be ensure stability and reproducibility. Best option would be to train the models on a rolling window time series so as to know exactly how many periods should be taken into account. Also, we could try testing a model that would forecast throughput x-minutes away to alert from incoming surges, but the capped number of calls makes it unnecessary for now.  
 
 \
 
@@ -457,7 +457,6 @@ autoplot(forecast.avg.ts) + autolayer(ts.avgresp.test, series = "Mond (test)")
 
 ```
 
-\ 
 
 Model accuracy: 
 
@@ -525,7 +524,7 @@ forecast_avg.ts <- forecast_avg_resptime()
 
 This yields the following forecast: 
 
-```{r, echo=FALSE, fig.align='center'}
+```{r, fig.height=8, fig.width=10, echo=FALSE, fig.align='center'}
 
 autoplot(ts.avgresp.train) + autolayer(forecast_avg.ts) + autolayer(ts.avgresp.test)
 
@@ -547,13 +546,11 @@ cat(paste0("MAPE: ", accuracy(forecast_avg.ts, ts.avgresp.test)["Test set", "MAP
 
 Combining the results from our Throughput and Average Response Time models, we can derive a forecast for the Mond applicaiton worktime. 
 
-```{r, echo=FALSE, fig.align='center'}
+```{r, fig.height=8, fig.width=10, echo=FALSE, fig.align='center'}
 
 autoplot(forecast.worktime) + autolayer(ts.worktime.test)
 
 ```
-
-\
 
 The model accuracy: 
 
@@ -562,4 +559,83 @@ The model accuracy:
 cat(paste0("MAPE: ", accuracy(forecast.worktime, ts.worktime.test)["Test set", "MAPE"]))
 
 ```
+
+\
+\
+
+## Correlating the Layers
+
+At first we tried to plot the 3 layers on a single graph correlating them using matching parts in the following keys:
+
+  * Applications: tkNameIdProvider (ex.: tm4-Mond-52)
+  * WES : servername (ex.: tm4-Mond-0601)
+  * Apache : meta_host (ex.: tm4-Mond-0602)
+
+
+But we received the following tip: "Ah, that approach may not work because each event sequence has a causal order and I don’t know if this is respected at the level of the severname and meta_host", which would mean that only agregating per name could lead to selecting improper observations. 
+
+We tested the datasets to check whether discrepancies exist between the correlationID and the technical component name :
+
+
+```{r, eval=FALSE}
+### getting the only component name in the 3 datasets
+components_apache <- gsub("^[^-]*-([^.]+).*", "\\1", apache$meta_host)
+components_apache <- gsub("(^[^-]*)-.*", "\\1", components_apache)
+
+
+components_applis <- gsub("^[^-]*-([^.]+).*", "\\1", applis$tkNameIdProvider)
+components_applis <- gsub("(^[^-]*)-.*", "\\1", components_applis)
+
+components_wes <- gsub("^[^-]*-([^.]+).*", "\\1", wes$servername)
+components_wes <- gsub("(^[^-]*)-.*", "\\1", components_wes)
+
+```
+
+\
+
+
+![Components names](head_component.png)
+
+\
+
+
+![All correlation IDs are in the same order](corrIDs.png)
+
+\
+
+
+![All components names are in the same order](componentsnames.png)
+
+\
+
+
+This means that for these particular datasets we could have correlated the layers through the matching part of their names as the rows match across the datasets. For robustness and reusability, we nevertheless corrrelate the layers through correlation IDs as such: 
+
+
+```{r, eval=FALSE}
+##getting the correlation IDs for the Mond technical component in applis
+applis_mond <- applis %>%
+  filter(tkNameIdProvider == "tm4-Mond-52") %>%
+  as.data.frame()
+
+mond_corrID <- applis_mond$correlationId
+
+###subsetting the wes and apache layers based on these components
+wes_mond <- wes[wes$corrID %in% mond_corrID, ]
+apache_mond <- apache[apache$corrID %in% mond_corrID, ]
+
+```
+
+\
+
+
+We plot the Mond component worktime across the three layers. 
+
+
+![](mond_layers_worktime.png)
+
+\
+
+
+If considering that worktime increases as we go down the layers, the applications layer weirdly has  the smallest worktime of the three, consistently. 
 

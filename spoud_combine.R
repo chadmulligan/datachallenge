@@ -112,6 +112,58 @@ gg_apache +
   guides(col=guide_legend(title=NULL))
 
 
+##### testing correlationID
+
+components_apache <- gsub("^[^-]*-([^.]+).*", "\\1", apache$meta_host)
+components_apache <- gsub("(^[^-]*)-.*", "\\1", components_apache)
 
 
+components_applis <- gsub("^[^-]*-([^.]+).*", "\\1", applis$tkNameIdProvider)
+components_applis <- gsub("(^[^-]*)-.*", "\\1", components_applis)
 
+components_wes <- gsub("^[^-]*-([^.]+).*", "\\1", wes$servername)
+components_wes <- gsub("(^[^-]*)-.*", "\\1", components_wes)
+
+head(components_apache)
+
+
+###combining the layers
+applis_mond <- applis %>%
+  filter(tkNameIdProvider == "tm4-Mond-52") %>%
+  as.data.frame()
+
+mond_corrID <- applis_mond$correlationId
+
+
+wes_mond <- wes[wes$corrID %in% mond_corrID, ]
+wes_mond_bucket <- to_bucket(wes_mond, key="servername", timeCol = "logTime", duration = "dTF")
+
+apache_mond <- apache[apache$corrID %in% mond_corrID, ]
+apache_mond$time <- apache_mond$time/1000
+apache_mond_bucket <- to_bucket(apache_mond, key="meta_host", timeCol = "logTime", duration = "time")
+
+
+###combine the layers
+combine_mond <- data.frame(
+  logTime = c(as.character(applis_mond_bucket$eventTime)),
+  worktime = c(applis_mond_bucket$worktime,apache_mond_bucket$worktime,wes_mond_bucket$worktime), 
+  layer = c(rep("applis", nrow(applis_mond_bucket)), 
+            rep("apache", nrow(apache_mond_bucket)),
+            rep("wes", nrow(wes_mond_bucket)))
+)
+
+combine_mond[, "logTime"] <- ymd_hms(combine_mond[, "logTime"])
+
+colors <- wes_palette(n=3, "FantasticFox")
+
+gg_apache <- ggplot(combine_mond, 
+                    aes(x=logTime, y=worktime, group=layer, col=layer)) +
+  geom_point() +
+  theme_bw() +
+  scale_x_datetime(date_breaks = "1 hour",
+                   labels = date_format("%H:%M")) +
+  theme(axis.title.x = element_blank()) +
+  ggtitle("Mond Layers Worktime") +
+  theme(plot.title = element_text(hjust=.5))
+
+gg_apache

@@ -11,7 +11,10 @@ applis <- prep_data(name)
 glimpse(applis)
 
 # load("raw_applications.RData")
+# applis <- res
+# rm(res)
 
+#load("applications.RData")
 
 #remove callID as it is unique within correlationId and beatID which is serialized per minute
 length(unique(applis[, "beatId"]))

@@ -198,6 +198,7 @@ forecast.worktime$upper <- forecast.worktime$upper * forecast_avg.ts
 forecast.worktime$lower <- forecast.worktime$lower * forecast_avg.ts
 forecast.worktime$x <- ts.worktime.train
 forecast.worktime$mean <- forecast.worktime$mean* forecast_avg.ts
+forecast.worktime$method <- "Throughput * AVG RespTime Forecast"
 autoplot(forecast.worktime) + autolayer(ts.worktime.test)
 
 accuracy(forecast.worktime, ts.worktime.test)
