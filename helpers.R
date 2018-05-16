@@ -10,7 +10,8 @@ library(magrittr)
 library(lazyeval)
 library(grid)
 library(wesanderson)
-
+library(forecast)
+library(tseries)
 
 
 ###modify the JSON - add commas, brackets...

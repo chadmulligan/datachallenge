@@ -108,3 +108,22 @@ g3 <- ggplot(applis_bucket, aes(x=eventTime,
 
 g3
 
+
+
+#### data analysis
+
+applis_bucket %>%
+  group_by(tkNameIdProvider) %>%
+  summarise(min = min(throughput), max = max(throughput)) 
+
+
+
+  
+  applis_bucket %>%
+    filter(tkNameIdProvider == i) -> res 
+  
+    diff(which(res$throughput == max(res$throughput)))
+  
+
+
+

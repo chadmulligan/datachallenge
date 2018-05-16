@@ -16,7 +16,7 @@ applis_mond_bucket <- applis_bucket[grepl("Mond", applis_bucket$tkNameIdProvider
 ts.throughput <- ts(applis_mond_bucket$throughput, freq=60)
 plot(ts.throughput)
 
-ts.throughput.train <- ts(ts.throughput[1:(0.6*720)], freq = 60)
+ts.throughput.train <- ts(ts.throughput[1:(0.6*720)], freq = 60)o
 ts.throughput.test <- ts(ts.throughput[433:720], freq = 60, start = 8.2)
 
 
@@ -124,7 +124,7 @@ plot(ts.avgresp.train)
 # autoplot(fc0) + autolayer(ts.avgresp.test, series = "Mond (test)")
 # 
 # ###seasonalised fit -NOPE
-# fit.avg.ts <- stlm(y = ts.avgresp.train, modelfunction = ar, s.window = 3)
+# fit.avg.ts <- stlm(y = ts.avgresp.train, modelfunction = arima, s.window = 3)
 # forecast.avg.ts <- forecast(fit.avg.ts, h = length(ts.avgresp.test))
 # accuracy(forecast.avg.ts, ts.avgresp.test)
 # autoplot(forecast.avg.ts) + autolayer(ts.avgresp.test, series = "Mond (test)")
@@ -171,5 +171,35 @@ forecast_avg_resptime <- function(ts.train=ts.avgresp.train, h=length(ts.avgresp
 
 
 forecast_avg.ts <- forecast_avg_resptime()
-autoplot(ts.avgresp.train) + autolayer(forecast_avg.ts) 
+autoplot(ts.avgresp.train) + autolayer(forecast_avg.ts)  + autolayer(ts.avgresp.test)
+accuracy(forecast_avg.ts, ts.avgresp.test)["Test set", "MAPE"]
 
+max(applis_mond_bucket$throughput)
+max(applis_mond_bucket$avg_respTime)
+max(applis_mond_bucket$worktime)
+
+
+save(list = ls(), file ="analysisworkspace.RData")
+
+
+
+### worktime
+head(forecast.ts$lower)
+head(forecast.ts$upper)
+
+autoplot(forecast.ts)
+
+ts.worktime <- ts(applis_mond_bucket$worktime, freq=60)
+ts.worktime.train <- ts(ts.worktime[1:(0.6*720)], freq = 60)
+ts.worktime.test <- ts(ts.worktime[433:720], freq = 60, start = 8.2)
+
+forecast.worktime <- forecast.ts
+forecast.worktime$upper <- forecast.worktime$upper * forecast_avg.ts
+forecast.worktime$lower <- forecast.worktime$lower * forecast_avg.ts
+forecast.worktime$x <- ts.worktime.train
+forecast.worktime$mean <- forecast.worktime$mean* forecast_avg.ts
+autoplot(forecast.worktime) + autolayer(ts.worktime.test)
+
+accuracy(forecast.worktime, ts.worktime.test)
+
+save(list=c("forecast.worktime", "ts.worktime", "ts.worktime.test", "ts.worktime.train"), file = "worktime_forecast.Rdata")
