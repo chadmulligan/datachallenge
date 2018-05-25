@@ -25,16 +25,18 @@ Note : supporting code and plots are available at github.com/chadmulligan/spoud
 
 The purpose of this analysis is to set the basis of a dashboard for software applicaitons maintenance that would help monitor the 3 layers so as to :
 
-  * warn IT of software applicaitons unexpected behaviour as funtion of response time, throughput / worktime.
+  * warn IT of unexpected behaviour in software applications, from the response time, throughput / worktime.
   * identify the faulty component/layer
   * take action
   
-  
+\
 
-#### Issue 
+
+#### Preprocessing Issue 
 
 The data response time data is extracted as a JSON file with wrong formatting. 
   
+\
   
 
 #### Consequence 
@@ -43,7 +45,8 @@ At the moment, preprocessing the data requires parsing the whole JSON files befo
 
   * time inefficent
   * resource expensive
-  
+
+\
   
 
 #### Solution
@@ -80,7 +83,9 @@ What we have:
         "hostName": "tm4-foo",
         etc.
     }
-  
+ 
+\
+
   
 What we need: 
 
@@ -123,9 +128,8 @@ What we need:
 
 ## Visualizations of the applications layer
 
-We have 12 hours of data over the 3 layers for a set o 18 technical components. Data was aggregated in 1-minute buckets ; We show the throughput (number of calls per 1 minute), average response time, and worktime to identify regular and faulty component behaviour on a given layer. 
+We have 12 hours of data over the 3 layers for a set o 18 technical components. Data was aggregated in 1-minute buckets. We plot the throughput (number of calls per 1 minute), average response time, and worktime to identify regular and faulty component behaviour on a given layer. 
 
-\
 \
 
 
@@ -255,6 +259,7 @@ g3 <- ggplot(applis_bucket, aes(x=eventTime, y=worktime, group = tkNameIdProvide
   guides(col=guide_legend(title = element_blank())) 
 
 g3
+
 ```
 
 \
@@ -299,7 +304,7 @@ grid.arrange(g4, g5, ncol=2)
 
 ### Estimating Throughput
 
-Facing a periodic signal we fit a model using a Seasonal Decomposition of Time Series by Loess (STL) that will gives us a rough fit of the curve (it takes a window of the observaitons and fit a curve locally to extract seasonal and trend components) and model the uncaught remainder with a standard ARIMA. 
+Facing a periodic signal we fit a model using a Seasonal Decomposition of Time Series by Loess (STL - fits a local polynomial regression) that will gives us a rough fit of the curve, then deseasonalize it, model with a standard ARIMA, and reseasonalize. 
 
 \
 
@@ -312,6 +317,9 @@ ts.throughput %>%
   autoplot()
 
 ```
+
+
+The decomposition is actually very good at getting the series trend. The seasonal and remainder component might be from the discrete nature of observations vs. continuous polynomial curve. 
 
 \
 
@@ -420,7 +428,7 @@ results %>%
 
 \
 
-Our best model is an STL + ARIMA (15, 0, 1), hence including 15 minutes lag + 1 lagged white noise error term. 
+Our best model is an STL + ARIMA (15, 0, 1), hence including a 15 minutes of lag + 1 lagged white noise error term. 
 
 
 ````{r, fig.height=8, fig.width=10, fig.align='center'}
@@ -544,13 +552,15 @@ cat(paste0("MAPE: ", accuracy(forecast_avg.ts, ts.avgresp.test)["Test set", "MAP
 
 ### Worktime Estimation
 
-Combining the results from our Throughput and Average Response Time models, we can derive a forecast for the Mond applicaiton worktime. 
+Combining the results from our Throughput and Average Response Time models, we can derive a forecast for the Mond application worktime. 
 
 ```{r, fig.height=8, fig.width=10, echo=FALSE, fig.align='center'}
 
 autoplot(forecast.worktime) + autolayer(ts.worktime.test)
 
 ```
+
+Note that the confidences intervals are wronng as they werre not computed for the average response time forecasts. 
 
 The model accuracy: 
 
@@ -563,6 +573,7 @@ cat(paste0("MAPE: ", accuracy(forecast.worktime, ts.worktime.test)["Test set", "
 \
 \
 
+
 ## Correlating the Layers
 
 At first we tried to plot the 3 layers on a single graph correlating them using matching parts in the following keys:
@@ -572,7 +583,9 @@ At first we tried to plot the 3 layers on a single graph correlating them using 
   * Apache : meta_host (ex.: tm4-Mond-0602)
 
 
-But we received the following tip: "Ah, that approach may not work because each event sequence has a causal order and I don’t know if this is respected at the level of the severname and meta_host", which would mean that only agregating per name could lead to selecting improper observations. 
+But we received the following tip: 
+
+    "Ah, that approach may not work because each event sequence has a causal order and I don’t know if this is respected at the level of the severname and meta_host", which would mean that only agregating per name could lead to selecting improper observations. 
 
 We tested the datasets to check whether discrepancies exist between the correlationID and the technical component name :
 
@@ -638,4 +651,7 @@ We plot the Mond component worktime across the three layers.
 
 
 If considering that worktime increases as we go down the layers, the applications layer weirdly has  the smallest worktime of the three, consistently. 
+
+
+## Questions?
 
